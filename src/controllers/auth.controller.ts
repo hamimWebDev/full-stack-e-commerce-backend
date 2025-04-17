@@ -1,16 +1,21 @@
 import { Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import User from '../models/user.model';
+import { Document } from 'mongoose';
+import { UnauthorizedError } from '../utils/errorHandler';
 
 interface AuthRequest extends Request {
   user?: {
-    id: string;
-  };
+    _id: string;
+    email: string;
+    name: string;
+    role: string;
+  } & Document;
 }
 
 export const register = async (req: Request, res: Response) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, email, password, role } = req.body;
 
     // Check if user already exists
     const existingUser = await User.findOne({ email });
@@ -21,16 +26,33 @@ export const register = async (req: Request, res: Response) => {
       });
     }
 
+    // If trying to create admin, check if requester is admin
+    if (role === 'admin') {
+      const token = req.headers.authorization?.split(' ')[1];
+      if (!token) {
+        throw new UnauthorizedError('Not authorized to create admin user');
+      }
+
+      const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as { role: string };
+      if (decoded.role !== 'admin') {
+        throw new UnauthorizedError('Not authorized to create admin user');
+      }
+    }
+
     // Create new user
     const user = await User.create({
       name,
       email,
-      password
+      password,
+      role: role || 'user' // Default to 'user' if role not provided
     });
 
-    // Generate JWT token
+    // Generate JWT token with role
     const token = jwt.sign(
-      { id: user._id },
+      { 
+        id: user._id,
+        role: user.role 
+      },
       process.env.JWT_SECRET as string,
       { expiresIn: '7d' }
     );
@@ -76,9 +98,12 @@ export const login = async (req: Request, res: Response) => {
       });
     }
 
-    // Generate JWT token
+    // Generate JWT token with role
     const token = jwt.sign(
-      { id: user._id },
+      { 
+        id: user._id,
+        role: user.role 
+      },
       process.env.JWT_SECRET as string,
       { expiresIn: '7d' }
     );

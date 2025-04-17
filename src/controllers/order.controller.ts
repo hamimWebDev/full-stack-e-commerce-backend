@@ -1,11 +1,15 @@
 import { Request, Response } from 'express';
 import Order from '../models/order.model';
 import Product from '../models/product.model';
+import { Document } from 'mongoose';
 
 interface AuthRequest extends Request {
   user?: {
-    id: string;
-  };
+    _id: string;
+    email: string;
+    name: string;
+    role: string;
+  } & Document;
 }
 
 export const getOrders = async (req: Request, res: Response) => {

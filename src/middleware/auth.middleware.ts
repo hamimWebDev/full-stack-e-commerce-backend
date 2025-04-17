@@ -1,9 +1,21 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import User from '../models/user.model';
+import { UnauthorizedError } from '../utils/errorHandler';
+import { Document } from 'mongoose';
+
+interface JwtPayload {
+  id: string;
+  role: string;
+}
 
 interface AuthRequest extends Request {
-  user?: any;
+  user?: {
+    _id: string;
+    email: string;
+    name: string;
+    role: string;
+  } & Document;
 }
 
 export const protect = async (req: AuthRequest, res: Response, next: NextFunction) => {
@@ -15,41 +27,33 @@ export const protect = async (req: AuthRequest, res: Response, next: NextFunctio
     }
 
     if (!token) {
-      return res.status(401).json({
-        success: false,
-        message: 'Not authorized to access this route'
-      });
+      throw new UnauthorizedError('Not authorized to access this route');
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as { id: string };
-
-    const user = await User.findById(decoded.id).select('-password');
-
+    const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as JwtPayload;
+    
+    const user = await User.findById(decoded.id);
     if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: 'User not found'
-      });
+      throw new UnauthorizedError('User not found');
     }
 
-    req.user = user;
+    req.user = user as AuthRequest['user'];
     next();
   } catch (error) {
-    return res.status(401).json({
-      success: false,
-      message: 'Not authorized to access this route'
-    });
+    next(error);
   }
 };
 
 export const authorize = (...roles: string[]) => {
   return (req: AuthRequest, res: Response, next: NextFunction) => {
-    if (!req.user || !roles.includes(req.user.role)) {
-      return res.status(403).json({
-        success: false,
-        message: 'Not authorized to access this route'
-      });
+    if (!req.user) {
+      throw new UnauthorizedError('Not authorized to access this route');
     }
+
+    if (!roles.includes(req.user.role)) {
+      throw new UnauthorizedError('Not authorized to access this route');
+    }
+
     next();
   };
 }; 
